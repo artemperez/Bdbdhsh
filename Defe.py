@@ -1,7 +1,9 @@
 import logging
 import random
 import asyncio
-import re
+import json
+import aiohttp
+from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import (
@@ -13,20 +15,76 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 import aiosqlite
-import os
 
 # Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Ваши данные
 BOT_TOKEN = "8400770070:AAFahEEaffeqcI0kcMwq5QVlv0Aur1GdbA8"
 OWNER_ID = 8050595279
 OWNER_USERNAME = "@aurieza"
-ADMIN_IDS = [OWNER_ID]  # Добавьте другие ID через запятую, например: [OWNER_ID, 123456789]
+ADMIN_IDS = [OWNER_ID]
+
+# Обязательные каналы для подписки
+REQUIRED_CHANNELS = [
+    {"username": "Manuals and softs🔫", "title": "Manuals and softs🔫", "link": "https://t.me/+uzhF2YtokTo2ZjBi"},
+    {"username": "Чат зайса)", "title": "Чат зайса)", "link": "https://t.me/+JjhrjbcMMso2MGQy"}
+]
+
+# Все приватные каналы
+ALL_PRIVATE_CHANNELS = [
+    ("💎 Приват #1", "https://t.me/+ZuUNjg1bJ3xiOTIy"),
+    ("🔥 Приват #2", "https://t.me/+ud0gESAJTRpiNGY6"),
+    ("🌟 Приват #3", "https://t.me/+ImsOnVdV-wkzMzgy"),
+    ("🚀 Приват #4", "https://t.me/+GoHxJYZjVHM2OTU8"),
+    ("💫 Приват #5", "https://t.me/+OwCjJcf8MLMzMDY0"),
+    ("🎯 Приват #6", "https://t.me/+7R5UlNBtS_ozMjI0"),
+    ("⚡ Приват #7", "https://t.me/+EXlBIikoHqY5NjM0"),
+    ("🎁 Приват #8", "https://t.me/+tB3ELsrzjXYxNTA8"),
+    ("💝 Приват #9", "https://t.me/+XS93nu2kjkgwYzEy"),
+    ("🎪 Приват #10", "https://t.me/+jtrr7X3DGJAyMzUy"),
+    ("✨ Приват #11", "https://t.me/+CLvBRlmQyKRmZWNi"),
+    ("🎭 Приват #12", "https://t.me/+vTldRbXSDx8yNzY6"),
+    ("💼 Приват #13", "https://t.me/+qSvuUw3Xi0plMzVk"),
+    ("🏆 Приват #14", "https://t.me/+3hsRBgNQeSA1Zjc0"),
+    ("🎨 Приват #15", "https://t.me/+fun3xCBTTCphNDY6"),
+    ("⚜️ Приват #16", "https://t.me/+_-ZMOq11be9lNWNi"),
+    ("🔮 Приват #17", "https://t.me/+h_4WC3Kovq1iZjM0"),
+    ("💸 Приват #18", "https://t.me/+5tPlzYo9dINjMGQ6"),
+    ("🛡️ Приват #19", "https://t.me/+l6yx3GDPfZs3MTcy"),
+    ("🎖️ Приват #20", "https://t.me/+JfWKSCrUdEQ4YmRi"),
+    ("🎬 Приват #21", "https://t.me/+sGbKNtgrKzMzZWI0"),
+    ("🎧 Приват #22", "https://t.me/+y0rpo4bAM6JmODAy"),
+    ("🎸 Приват #23", "https://t.me/+GJS2mdhj5_JmYTBi"),
+    ("📱 Приват #24", "https://t.me/+kpRNywup-tIyYzUy"),
+    ("💻 Приват #25", "https://t.me/+Cim4j0KPWU0zZWJi"),
+    ("🖥️ Приват #26", "https://t.me/+fsFDo_r5bBk0Yjk0"),
+    ("📡 Приват #27", "https://t.me/+JMHlFI45ppw1ZDky"),
+    ("🛰️ Приват #28", "https://t.me/+y4MMo2_f4DFmODNi"),
+    ("🔭 Приват #29", "https://t.me/+Su7A6bDH_L8xYTUy"),
+    ("🧬 Приват #30", "https://t.me/+uvzDdXuTeCU5NDRi"),
+    ("🔬 Приват #31", "https://t.me/+2JJdqT5zSa0zMGM0"),
+    ("🧪 Приват #32", "https://t.me/+C1S2zINTJ3ozYjc0"),
+    ("⚗️ Приват #33", "https://t.me/+_JLaUwx6NiMzOGRi"),
+    ("📊 Приват #34", "https://t.me/+t6dpNkkV2G4yZDli"),
+    ("📈 Приват #35", "https://t.me/+EEwhazNzq5wzMjIy"),
+    ("📉 Приват #36", "https://t.me/+DfyaUSyV4VU2NTZi"),
+    ("💰 Приват #37", "https://t.me/+0uN0IYrraJswNmFk"),
+    ("💎 Приват #38", "https://t.me/+xqJEiHkw-6FiNmJi"),
+    ("🏦 Приват #39", "https://t.me/+Oolh-X6pIhhlYTMy"),
+    ("💳 Приват #40", "https://t.me/+cLkkkmIwXYk4Yzcy"),
+    ("🏠 Приват #41", "https://t.me/+HKiEUZGsqgNjZWQ8"),
+    ("🏢 Приват #42", "https://t.me/+3QbqycNNYFI0ZjU6"),
+    ("🏨 Приват #43", "https://t.me/+bt6iivf0tTtmNTE6"),
+    ("🏩 Приват #44", "https://t.me/+JaQQu47vhDI2NmQy"),
+    ("🏪 Приват #45", "https://t.me/+la195L2Vi6kwNGY6"),
+    ("💰 Money приват", "https://t.me/money_privat"),
+    ("🔐 Приват #47", "https://t.me/+2uZS1rkKYf0xYTQy"),
+    ("🔒 Приват #48", "https://t.me/+MWPACm-3LfcyNDhi"),
+    ("🔑 Приват #49", "https://t.me/+AX3nc3ccbsYzNDcy"),
+    ("🗝️ Приват #50", "https://t.me/+pfwrCNbzufs4MmYy"),
+]
 
 # Инициализация бота
 bot = Bot(token=BOT_TOKEN)
@@ -38,16 +96,19 @@ DB_NAME = "bot_database.db"
 
 # Состояния FSM
 class UserState(StatesGroup):
-    waiting_captcha = State()
     waiting_subscription = State()
     reading_rules = State()
+    ai_waiting_question = State()
 
 class AdminState(StatesGroup):
     waiting_channel_username = State()
+    waiting_channel_title = State()
     waiting_channel_link = State()
     waiting_private_name = State()
     waiting_private_link = State()
+    waiting_admin_id = State()
     waiting_broadcast = State()
+    waiting_user_id = State()
 
 # Класс для управления базой данных
 class Database:
@@ -63,17 +124,18 @@ class Database:
                     user_id INTEGER PRIMARY KEY,
                     username TEXT,
                     full_name TEXT,
-                    captcha_passed BOOLEAN DEFAULT 0,
                     subscribed BOOLEAN DEFAULT 0,
                     rules_accepted BOOLEAN DEFAULT 0,
                     registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    ai_requests INTEGER DEFAULT 0,
+                    is_banned BOOLEAN DEFAULT 0
                 )
             ''')
             
             # Таблица каналов для подписки
             await db.execute('''
-                CREATE TABLE IF NOT EXISTS channels (
+                CREATE TABLE IF NOT EXISTS admin_channels (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     channel_username TEXT UNIQUE,
                     channel_title TEXT,
@@ -99,7 +161,6 @@ class Database:
                 CREATE TABLE IF NOT EXISTS admins (
                     user_id INTEGER PRIMARY KEY,
                     username TEXT,
-                    permissions TEXT DEFAULT 'all',
                     added_by INTEGER,
                     added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -120,35 +181,25 @@ class Database:
             # Добавляем владельца как админа
             await self.add_admin(OWNER_ID, OWNER_USERNAME.split('@')[-1] if '@' in OWNER_USERNAME else OWNER_USERNAME, OWNER_ID)
             
-            # Добавляем канал по умолчанию
-            await self.add_channel("@example_channel", "Пример канала", "https://t.me/example_channel", OWNER_ID)
+            # Добавляем обязательные каналы
+            for channel in REQUIRED_CHANNELS:
+                try:
+                    await self.add_admin_channel(
+                        channel["username"], 
+                        channel["title"], 
+                        channel["link"], 
+                        OWNER_ID
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка добавления канала: {e}")
             
-            # Добавляем приватные каналы по умолчанию
-            default_privates = [
-                ("приват #1", "https://t.me/+ZuUNjg1bJ3xiOTIy"),
-                ("приват #2", "https://t.me/+ud0gESAJTRpiNGY6"),
-                ("приват #3", "https://t.me/+ImsOnVdV-wkzMzgy"),
-                ("приват #4", "https://t.me/+GoHxJYZjVHM2OTU8"),
-                ("приват #5", "https://t.me/+OwCjJcf8MLMzMDY0"),
-                ("приват #6", "https://t.me/+7R5UlNBtS_ozMjI0"),
-                ("приват #7", "https://t.me/+EXlBIikoHqY5NjM0"),
-                ("приват #8", "https://t.me/+tB3ELsrzjXYxNTA8"),
-                ("приват #9", "https://t.me/+XS93nu2kjkgwYzEy"),
-                ("приват #10", "https://t.me/+jtrr7X3DGJAyMzUy"),
-                ("приват #11", "https://t.me/+CLvBRlmQyKRmZWNi"),
-                ("приват #12", "https://t.me/+vTldRbXSDx8yNzY6"),
-                ("приват #13", "https://t.me/+qSvuUw3Xi0plMzVk"),
-                ("приват #14", "https://t.me/+3hsRBgNQeSA1Zjc0"),
-                ("приват #15", "https://t.me/+fun3xCBTTCphNDY6"),
-            ]
-            
-            for name, link in default_privates:
+            # Добавляем все приватные каналы
+            for name, link in ALL_PRIVATE_CHANNELS:
                 try:
                     await self.add_private_channel(name, link, OWNER_ID)
-                except:
-                    pass  # Игнорируем дубликаты
+                except Exception as e:
+                    logger.error(f"Ошибка добавления приватного канала: {e}")
     
-    # Методы для пользователей
     async def add_user(self, user_id: int, username: str, full_name: str):
         async with aiosqlite.connect(self.db_name) as db:
             await db.execute(
@@ -156,14 +207,6 @@ class Database:
                 (user_id, username, full_name) 
                 VALUES (?, ?, ?)""",
                 (user_id, username, full_name)
-            )
-            await db.commit()
-    
-    async def update_user_captcha(self, user_id: int, passed: bool = True):
-        async with aiosqlite.connect(self.db_name) as db:
-            await db.execute(
-                "UPDATE users SET captcha_passed = ? WHERE user_id = ?",
-                (passed, user_id)
             )
             await db.commit()
     
@@ -183,10 +226,22 @@ class Database:
             )
             await db.commit()
     
+    async def increment_ai_requests(self, user_id: int):
+        async with aiosqlite.connect(self.db_name) as db:
+            await db.execute(
+                "UPDATE users SET ai_requests = ai_requests + 1 WHERE user_id = ?",
+                (user_id,)
+            )
+            await db.commit()
+    
     async def get_user(self, user_id: int):
         async with aiosqlite.connect(self.db_name) as db:
             async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
-                return await cursor.fetchone()
+                row = await cursor.fetchone()
+                if row:
+                    columns = [desc[0] for desc in cursor.description]
+                    return dict(zip(columns, row))
+                return None
     
     async def get_all_users(self):
         async with aiosqlite.connect(self.db_name) as db:
@@ -194,34 +249,57 @@ class Database:
                 result = await cursor.fetchone()
                 return result[0] if result else 0
     
+    async def get_active_users_count(self):
+        async with aiosqlite.connect(self.db_name) as db:
+            async with db.execute("SELECT COUNT(*) FROM users WHERE last_active > datetime('now', '-7 days')") as cursor:
+                result = await cursor.fetchone()
+                return result[0] if result else 0
+    
     async def get_user_ids(self):
         async with aiosqlite.connect(self.db_name) as db:
-            async with db.execute("SELECT user_id FROM users") as cursor:
+            async with db.execute("SELECT user_id FROM users WHERE is_banned = 0") as cursor:
                 rows = await cursor.fetchall()
                 return [row[0] for row in rows]
     
-    # Методы для каналов
-    async def add_channel(self, channel_username: str, channel_title: str, channel_link: str, added_by: int):
+    async def get_all_users_data(self):
+        async with aiosqlite.connect(self.db_name) as db:
+            async with db.execute("SELECT user_id, username, full_name, registration_date FROM users ORDER BY registration_date DESC LIMIT 100") as cursor:
+                return await cursor.fetchall()
+    
+    async def ban_user(self, user_id: int):
+        async with aiosqlite.connect(self.db_name) as db:
+            await db.execute("UPDATE users SET is_banned = 1 WHERE user_id = ?", (user_id,))
+            await db.commit()
+    
+    async def unban_user(self, user_id: int):
+        async with aiosqlite.connect(self.db_name) as db:
+            await db.execute("UPDATE users SET is_banned = 0 WHERE user_id = ?", (user_id,))
+            await db.commit()
+    
+    async def add_admin_channel(self, channel_username: str, channel_title: str, channel_link: str, added_by: int):
         async with aiosqlite.connect(self.db_name) as db:
             await db.execute(
-                """INSERT OR REPLACE INTO channels 
+                """INSERT OR REPLACE INTO admin_channels 
                 (channel_username, channel_title, channel_link, added_by) 
                 VALUES (?, ?, ?, ?)""",
                 (channel_username, channel_title, channel_link, added_by)
             )
             await db.commit()
     
-    async def get_channels(self):
+    async def get_admin_channels(self):
         async with aiosqlite.connect(self.db_name) as db:
-            async with db.execute("SELECT * FROM channels ORDER BY id") as cursor:
-                return await cursor.fetchall()
+            async with db.execute("SELECT * FROM admin_channels ORDER BY id") as cursor:
+                rows = await cursor.fetchall()
+                if rows:
+                    columns = [desc[0] for desc in cursor.description]
+                    return [dict(zip(columns, row)) for row in rows]
+                return []
     
-    async def delete_channel(self, channel_id: int):
+    async def delete_admin_channel(self, channel_id: int):
         async with aiosqlite.connect(self.db_name) as db:
-            await db.execute("DELETE FROM channels WHERE id = ?", (channel_id,))
+            await db.execute("DELETE FROM admin_channels WHERE id = ?", (channel_id,))
             await db.commit()
     
-    # Методы для приватных каналов
     async def add_private_channel(self, name: str, link: str, added_by: int):
         async with aiosqlite.connect(self.db_name) as db:
             await db.execute(
@@ -232,17 +310,20 @@ class Database:
             )
             await db.commit()
     
-    async def get_private_channels(self, limit: int = 100):
+    async def get_private_channels(self, limit: int = 200):
         async with aiosqlite.connect(self.db_name) as db:
             async with db.execute("SELECT * FROM private_channels ORDER BY id LIMIT ?", (limit,)) as cursor:
-                return await cursor.fetchall()
+                rows = await cursor.fetchall()
+                if rows:
+                    columns = [desc[0] for desc in cursor.description]
+                    return [dict(zip(columns, row)) for row in rows]
+                return []
     
     async def delete_private_channel(self, channel_id: int):
         async with aiosqlite.connect(self.db_name) as db:
             await db.execute("DELETE FROM private_channels WHERE id = ?", (channel_id,))
             await db.commit()
     
-    # Методы для администраторов
     async def add_admin(self, user_id: int, username: str, added_by: int):
         async with aiosqlite.connect(self.db_name) as db:
             await db.execute(
@@ -256,7 +337,11 @@ class Database:
     async def get_admins(self):
         async with aiosqlite.connect(self.db_name) as db:
             async with db.execute("SELECT * FROM admins") as cursor:
-                return await cursor.fetchall()
+                rows = await cursor.fetchall()
+                if rows:
+                    columns = [desc[0] for desc in cursor.description]
+                    return [dict(zip(columns, row)) for row in rows]
+                return []
     
     async def is_admin(self, user_id: int):
         if user_id in ADMIN_IDS:
@@ -270,12 +355,11 @@ class Database:
             await db.execute("DELETE FROM admins WHERE user_id = ? AND user_id != ?", (user_id, OWNER_ID))
             await db.commit()
     
-    # Методы для статистики
     async def update_stat(self, metric: str, value: int = 1):
         async with aiosqlite.connect(self.db_name) as db:
             # Сначала проверяем, существует ли запись
-            async with db.execute("SELECT 1 FROM stats WHERE metric = ?", (metric,)) as cursor:
-                exists = await cursor.fetchone()
+            cursor = await db.execute("SELECT 1 FROM stats WHERE metric = ?", (metric,))
+            exists = await cursor.fetchone()
             
             if exists:
                 await db.execute(
@@ -302,38 +386,107 @@ db = Database()
 async def check_subscription(user_id: int, channel_username: str) -> bool:
     """Проверяет, подписан ли пользователь на канал"""
     try:
+        # Убираем @ если есть
+        if channel_username.startswith('@'):
+            channel_username = channel_username[1:]
+        
         member = await bot.get_chat_member(chat_id=channel_username, user_id=user_id)
         return member.status in ["member", "administrator", "creator"]
     except Exception as e:
-        logger.error(f"Ошибка проверки подписки на {channel_username}: {e}")
+        logger.error(f"Ошибка проверки подписки: {e}")
         return False
 
-def generate_captcha() -> tuple:
-    """Генерирует случайную капчу"""
-    operations = ['+', '-', '*']
-    num1 = random.randint(1, 20)
-    num2 = random.randint(1, 20)
-    operation = random.choice(operations)
+# УПРОЩЕННАЯ НЕЙРОСЕТЬ С ПОИСКОМ В ИНТЕРНЕТЕ (без сложных зависимостей)
+async def ai_search_internet(question: str) -> str:
+    """Ищет информацию в интернете через простые API"""
+    try:
+        # Используем простой API для поиска (DuckDuckGo Instant Answer)
+        search_url = f"https://api.duckduckgo.com/?q={question}&format=json&no_html=1"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(search_url, timeout=10) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    
+                    if data.get('AbstractText'):
+                        abstract = data['AbstractText']
+                        source = data.get('AbstractSource', 'DuckDuckGo')
+                        url = data.get('AbstractURL', '')
+                        
+                        response_text = f"🤖 *AI:* Вот что я нашел:\n\n"
+                        response_text += f"{abstract}\n\n"
+                        if url:
+                            response_text += f"🔗 *Источник:* {source}\n{url}"
+                        return response_text
+                    
+                    elif data.get('RelatedTopics'):
+                        topics = data['RelatedTopics'][:3]
+                        response_text = "🤖 *AI:* Вот что я нашел по вашему запросу:\n\n"
+                        
+                        for i, topic in enumerate(topics, 1):
+                            if isinstance(topic, dict) and 'Text' in topic:
+                                text = topic['Text']
+                                response_text += f"{i}. {text}\n\n"
+                        
+                        return response_text
+        
+        # Если не нашли через API, возвращаем умный ответ
+        return ai_smart_response(question)
+        
+    except Exception as e:
+        logger.error(f"Ошибка AI поиска: {e}")
+        return ai_smart_response(question)
+
+def ai_smart_response(question: str) -> str:
+    """Генерирует умный ответ на основе ключевых слов"""
+    question_lower = question.lower()
     
-    if operation == '+':
-        answer = num1 + num2
-    elif operation == '-':
-        answer = num1 - num2
-    else:  # '*'
-        answer = num1 * num2
+    # Ответы на популярные вопросы
+    responses = [
+        "🤖 *AI:* На основе доступной информации могу сказать, что ",
+        "🤖 *AI:* Согласно моим данным, ",
+        "🤖 *AI:* По этому вопросу существует следующая информация: ",
+    ]
     
-    question = f"{num1} {operation} {num2} = ?"
-    return question, str(answer)
+    base_response = random.choice(responses)
+    
+    # Проверяем ключевые слова
+    if any(word in question_lower for word in ['привет', 'здравствуй', 'hello', 'hi']):
+        return "🤖 *AI:* Привет! Я ваш AI помощник. Задавайте вопросы, и я постараюсь найти информацию в интернете!"
+    
+    elif any(word in question_lower for word in ['как дела', 'как ты', 'настроение']):
+        return "🤖 *AI:* Спасибо за вопрос! Я функционирую нормально и готов помогать. Чем могу быть полезен?"
+    
+    elif any(word in question_lower for word in ['погода', 'температура', 'дождь']):
+        return "🌤 *AI:* К сожалению, у меня нет доступа к актуальным данным о погоде. Рекомендую использовать специализированные погодные сервисы или приложения."
+    
+    elif any(word in question_lower for word in ['время', 'дата', 'который час']):
+        current_time = datetime.now().strftime("%H:%M:%S")
+        current_date = datetime.now().strftime("%d.%m.%Y")
+        return f"⏰ *AI:* Сейчас {current_time}, {current_date}"
+    
+    elif any(word in question_lower for word in ['python', 'программирование', 'код']):
+        return f"{base_response}Python - это популярный язык программирования. Он широко используется в веб-разработке, data science, искусственном интеллекте и автоматизации."
+    
+    elif any(word in question_lower for word in ['бот', 'телеграм', 'telegram']):
+        return f"{base_response}Telegram боты создаются с помощью Telegram Bot API. Для создания ботов используется язык программирования Python с библиотекой aiogram."
+    
+    elif any(word in question_lower for word in ['ии', 'нейросеть', 'искусственный интеллект']):
+        return f"{base_response}Искусственный интеллект (ИИ) - это область компьютерных наук, занимающаяся созданием интеллектуальных машин. Нейросети - один из подходов в ИИ."
+    
+    else:
+        # Общий ответ
+        return f"{base_response}это интересный вопрос. Рекомендую поискать дополнительную информацию в интернете или специализированных источниках."
 
 def create_main_menu() -> ReplyKeyboardMarkup:
     """Создает главное меню"""
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🎮 Мини-игры"), KeyboardButton(text="🔗 Получить приватки")],
+            [KeyboardButton(text="🎮 Мини-игры"), KeyboardButton(text="🔗 Приватки")],
+            [KeyboardButton(text="🤖 Нейросеть"), KeyboardButton(text="📊 Статистика")],
             [KeyboardButton(text="📜 Правила"), KeyboardButton(text="❓ Помощь")],
         ],
-        resize_keyboard=True,
-        input_field_placeholder="Выберите действие..."
+        resize_keyboard=True
     )
     return keyboard
 
@@ -342,14 +495,16 @@ def create_admin_keyboard() -> InlineKeyboardMarkup:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],
-            [InlineKeyboardButton(text="➕ Добавить канал", callback_data="admin_add_channel")],
-            [InlineKeyboardButton(text="🗑 Удалить канал", callback_data="admin_remove_channel")],
-            [InlineKeyboardButton(text="➕ Добавить приват", callback_data="admin_add_private")],
-            [InlineKeyboardButton(text="🗑 Удалить приват", callback_data="admin_remove_private")],
-            [InlineKeyboardButton(text="👥 Добавить админа", callback_data="admin_add_admin")],
-            [InlineKeyboardButton(text="👥 Удалить админа", callback_data="admin_remove_admin")],
+            [InlineKeyboardButton(text="👥 Пользователи", callback_data="admin_users")],
+            [InlineKeyboardButton(text="➕ Канал", callback_data="admin_add_channel")],
+            [InlineKeyboardButton(text="🗑 Каналы", callback_data="admin_remove_channel")],
+            [InlineKeyboardButton(text="➕ Приват", callback_data="admin_add_private")],
+            [InlineKeyboardButton(text="🗑 Приваты", callback_data="admin_remove_private")],
+            [InlineKeyboardButton(text="👑 Админы", callback_data="admin_manage")],
             [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+            [InlineKeyboardButton(text="⛔ Бан", callback_data="admin_ban")],
+            [InlineKeyboardButton(text="✅ Разбан", callback_data="admin_unban")],
+            [InlineKeyboardButton(text="🔙 Выход", callback_data="admin_back")]
         ]
     )
     return keyboard
@@ -358,13 +513,23 @@ def create_games_keyboard() -> InlineKeyboardMarkup:
     """Создает клавиатуру мини-игр"""
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🎲 Бросить кубик", callback_data="game_dice")],
-            [InlineKeyboardButton(text="🎯 Бросить дротик", callback_data="game_dart")],
+            [InlineKeyboardButton(text="🎲 Кубик", callback_data="game_dice")],
+            [InlineKeyboardButton(text="🎯 Дротик", callback_data="game_dart")],
             [InlineKeyboardButton(text="🏀 Баскетбол", callback_data="game_basketball")],
             [InlineKeyboardButton(text="⚽ Футбол", callback_data="game_football")],
-            [InlineKeyboardButton(text="🎰 Слот-машина", callback_data="game_slot")],
-            [InlineKeyboardButton(text="🎳 Боулинг", callback_data="game_bowling")],
+            [InlineKeyboardButton(text="🎰 Слоты", callback_data="game_slot")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="game_back")]
+        ]
+    )
+    return keyboard
+
+def create_ai_keyboard() -> InlineKeyboardMarkup:
+    """Создает клавиатуру для нейросети"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔍 Задать вопрос", callback_data="ai_question")],
+            [InlineKeyboardButton(text="📊 Моя статистика", callback_data="ai_stats")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="ai_back")]
         ]
     )
     return keyboard
@@ -380,639 +545,611 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await db.add_user(user_id, username, full_name)
     await db.update_stat("starts")
     
-    # Проверяем, прошел ли пользователь все этапы
+    # Проверяем бан
     user_data = await db.get_user(user_id)
+    if user_data and user_data.get('is_banned'):
+        await message.answer("⛔ *Вы забанены в этом боте!*", parse_mode="Markdown")
+        return
     
-    if user_data and user_data[3] and user_data[4] and user_data[5]:  # Все пройдено
-        welcome_text = f"""
-✨ *Добро пожаловать в бот, {full_name}!* ✨
+    welcome_text = f"""
+✨ *Добро пожаловать, {full_name}!*
 
-🎉 Вы уже прошли все этапы и имеете доступ ко всем функциям!
+🤖 *Я - многофункциональный бот:*
+• 🎮 Мини-игры
+• 🔗 50+ приватных каналов
+• 🤖 Нейросеть с поиском
+• 📊 Статистика
 
-Выберите действие из меню ниже:
-        """
-        await message.answer(welcome_text, parse_mode="Markdown", reply_markup=create_main_menu())
+👇 *Для доступа подпишитесь на каналы*
+    """
+    
+    await message.answer(welcome_text, parse_mode="Markdown")
+    
+    # Проверяем регистрацию
+    if user_data and user_data.get('subscribed') and user_data.get('rules_accepted'):
+        await message.answer("✅ *Вы уже зарегистрированы!*", reply_markup=create_main_menu())
         await state.clear()
         return
     
-    # Если не прошел капчу
-    if not user_data or not user_data[3]:
-        await show_captcha(message, state)
-    # Если не подписался
-    elif not user_data[4]:
+    if not user_data or not user_data.get('subscribed'):
         await check_all_subscriptions(message, state)
-    # Если не принял правила
-    elif not user_data[5]:
+    elif not user_data.get('rules_accepted'):
         await show_rules(message, state)
-
-async def show_captcha(message: types.Message, state: FSMContext):
-    """Показывает капчу"""
-    question, answer = generate_captcha()
-    
-    await state.set_state(UserState.waiting_captcha)
-    await state.update_data(captcha_answer=answer)
-    
-    captcha_text = f"""
-🔐 *Проверка безопасности*
-
-Пожалуйста, решите простой пример, чтобы продолжить:
-
-`{question}`
-
-*Введите ответ цифрами:*
-    """
-    
-    await message.answer(captcha_text, parse_mode="Markdown")
-
-@dp.message(UserState.waiting_captcha)
-async def process_captcha(message: types.Message, state: FSMContext):
-    """Обрабатывает ответ на капчу"""
-    user_answer = message.text.strip()
-    data = await state.get_data()
-    correct_answer = data.get("captcha_answer")
-    
-    if user_answer == correct_answer:
-        await db.update_user_captcha(message.from_user.id)
-        await db.update_stat("captcha_passed")
-        
-        await message.answer("✅ *Капча пройдена успешно!*", parse_mode="Markdown")
-        await check_all_subscriptions(message, state)
-    else:
-        await message.answer("❌ *Неверный ответ! Попробуйте еще раз.*", parse_mode="Markdown")
-        await show_captcha(message, state)
 
 async def check_all_subscriptions(message: types.Message, state: FSMContext):
-    """Проверяет подписки на все каналы"""
-    channels = await db.get_channels()
+    """Проверяет подписки на каналы"""
+    # Все каналы: обязательные + из базы
+    all_channels = REQUIRED_CHANNELS.copy()
+    admin_channels = await db.get_admin_channels()
     
-    if not channels:
-        # Если нет каналов, сразу переходим к правилам
-        await db.update_user_subscription(message.from_user.id)
-        await show_rules(message, state)
-        return
+    for channel in admin_channels:
+        all_channels.append({
+            "username": channel['channel_username'],
+            "title": channel['channel_title'] or channel['channel_username'],
+            "link": channel['channel_link']
+        })
+    
+    # Удаляем дубликаты
+    unique_channels = []
+    seen = set()
+    for channel in all_channels:
+        identifier = channel['username']
+        if identifier not in seen:
+            seen.add(identifier)
+            unique_channels.append(channel)
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+    text = "📢 *Подпишитесь на каналы:*\n\n"
     
-    subscription_text = "📢 *Подписка на каналы*\n\nДля продолжения необходимо подписаться на следующие каналы:\n\n"
-    
-    for i, channel in enumerate(channels, 1):
-        channel_username = channel[1]
-        channel_title = channel[2] or channel_username
-        channel_link = channel[3] or f"https://t.me/{channel_username.lstrip('@')}"
-        
-        subscription_text += f"{i}. {channel_title}\n"
+    for channel in unique_channels:
+        text += f"• {channel['title']}\n"
         keyboard.inline_keyboard.append([
-            InlineKeyboardButton(
-                text=f"📢 Канал {i}", 
-                url=channel_link
-            )
+            InlineKeyboardButton(text=f"📢 {channel['title'][:20]}", url=channel['link'])
         ])
     
-    subscription_text += "\nПосле подписки нажмите кнопку ниже:"
-    
-    keyboard.inline_keyboard.append([
-        InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription")
-    ])
+    text += "\n*После подписки нажмите:*"
+    keyboard.inline_keyboard.append([InlineKeyboardButton(text="✅ Проверить подписки", callback_data="check_subscription")])
     
     await state.set_state(UserState.waiting_subscription)
-    await message.answer(subscription_text, parse_mode="Markdown", reply_markup=keyboard)
+    await message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
 
 @dp.callback_query(F.data == "check_subscription")
 async def verify_subscription(callback: CallbackQuery, state: FSMContext):
-    """Проверяет подписки пользователя"""
+    """Проверяет подписки"""
     user_id = callback.from_user.id
-    channels = await db.get_channels()
     
-    all_subscribed = True
-    not_subscribed_channels = []
+    # Все каналы: обязательные + из базы
+    all_channels = REQUIRED_CHANNELS.copy()
+    admin_channels = await db.get_admin_channels()
     
-    for channel in channels:
-        channel_username = channel[1]
-        if not await check_subscription(user_id, channel_username):
-            all_subscribed = False
-            not_subscribed_channels.append(channel[2] or channel_username)
+    for channel in admin_channels:
+        all_channels.append({
+            "username": channel['channel_username'],
+            "title": channel['channel_title'] or channel['channel_username'],
+            "link": channel['channel_link']
+        })
     
-    if all_subscribed:
+    # Удаляем дубликаты
+    unique_channels = []
+    seen = set()
+    for channel in all_channels:
+        identifier = channel['username']
+        if identifier not in seen:
+            seen.add(identifier)
+            unique_channels.append(channel)
+    
+    not_subscribed = []
+    for channel in unique_channels:
+        if not await check_subscription(user_id, channel["username"]):
+            not_subscribed.append(channel["title"])
+    
+    if not not_subscribed:
         await db.update_user_subscription(user_id)
         await db.update_stat("subscribed")
-        
         await callback.message.edit_text("✅ *Все подписки подтверждены!*", parse_mode="Markdown")
         await show_rules(callback.message, state)
     else:
-        channels_list = "\n".join([f"• {ch}" for ch in not_subscribed_channels])
-        await callback.answer(
-            f"❌ Вы не подписались на:\n{channels_list}",
-            show_alert=True
-        )
+        channels_text = '\n'.join(f"• {title}" for title in not_subscribed)
+        await callback.answer(f"❌ Не подписан на:\n{channels_text}", show_alert=True)
     
     await callback.answer()
 
 async def show_rules(message: types.Message, state: FSMContext):
     """Показывает правила"""
     rules_text = f"""
-📜 *Правила использования бота:*
+📜 *Правила бота:*
 
-1. 🤝 *Уважение*  
-   Уважайте других пользователей и администрацию.
+1. 🤝 Уважайте других
+2. 📢 Не спамьте
+3. 🔗 Подпишитесь на каналы
+4. 🤖 Используйте AI ответственно
+5. 📞 Помощь: {OWNER_USERNAME}
 
-2. 📢 *Спам запрещен*  
-   Запрещена рассылка рекламы и флуд.
-
-3. 🔗 *Запрещенные материалы*  
-   Не делитесь запрещенным контентом.
-
-4. 🛡 *Безопасность*  
-   Не пытайтесь взломать бота или нарушить его работу.
-
-5. 📞 *Поддержка*  
-   При возникновении проблем обращайтесь к {OWNER_USERNAME}
-
-*Нажимая "Принять", вы соглашаетесь с правилами.*
+*Нажмите "Принять":*
     """
     
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Принять правила", callback_data="accept_rules")]
-        ]
-    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Принять правила", callback_data="accept_rules")]
+    ])
     
     await state.set_state(UserState.reading_rules)
     await message.answer(rules_text, parse_mode="Markdown", reply_markup=keyboard)
 
 @dp.callback_query(F.data == "accept_rules")
 async def accept_rules(callback: CallbackQuery, state: FSMContext):
-    """Обрабатывает принятие правил"""
+    """Принимает правила"""
     await db.update_user_rules(callback.from_user.id)
     await db.update_stat("rules_accepted")
     
-    welcome_text = f"""
-🎉 *Поздравляем, {callback.from_user.full_name}!* 🎉
-
-Вы успешно прошли все этапы и теперь имеете доступ ко всем функциям бота!
-
-✨ *Доступные функции:*
-• 🎮 Мини-игры для развлечения
-• 🔗 Получение приватных ссылок
-• 📜 Просмотр правил
-• ❓ Помощь и поддержка
-
-Выберите действие из меню ниже:
-    """
-    
-    await callback.message.edit_text(welcome_text, parse_mode="Markdown")
-    await callback.message.answer("👇 *Используйте меню для навигации:*", 
-                                 parse_mode="Markdown", 
-                                 reply_markup=create_main_menu())
+    await callback.message.edit_text(f"🎉 *Регистрация завершена, {callback.from_user.full_name}!*", parse_mode="Markdown")
+    await callback.message.answer("👇 *Главное меню:*", reply_markup=create_main_menu())
     await state.clear()
     await callback.answer()
 
-# Основное меню
+# Основные функции
 @dp.message(F.text == "🎮 Мини-игры")
 async def show_games(message: types.Message):
-    """Показывает мини-игры"""
+    """Показывает игры"""
     user_data = await db.get_user(message.from_user.id)
-    if not user_data or not (user_data[3] and user_data[4] and user_data[5]):
-        await message.answer("⚠️ *Сначала пройдите все этапы регистрации!*", parse_mode="Markdown")
+    if not user_data or not (user_data.get('subscribed') and user_data.get('rules_accepted')):
+        await message.answer("⚠️ *Сначала пройдите регистрацию!*", parse_mode="Markdown")
         return
     
-    games_text = """
-🎮 *Мини-игры*
+    await message.answer("🎮 *Выберите игру:*", reply_markup=create_games_keyboard())
 
-Выберите игру из списка ниже:
-
-• 🎲 *Бросить кубик* - случайное число от 1 до 6
-• 🎯 *Бросить дротик* - попадите в цель!
-• 🏀 *Баскетбол* - забросьте мяч в корзину
-• ⚽ *Футбол* - забивайте пенальти
-• 🎰 *Слот-машина* - испытайте удачу!
-• 🎳 *Боулинг* - сбейте кегли!
-
-Выберите игру:
-    """
-    
-    await message.answer(games_text, parse_mode="Markdown", reply_markup=create_games_keyboard())
-
-@dp.callback_query(F.data.startswith("game_"))
-async def process_game(callback: CallbackQuery):
-    """Обрабатывает выбор игры"""
-    game_type = callback.data.split("_")[1]
-    
-    if game_type == "back":
-        await callback.message.delete()
-        await callback.answer()
-        return
-    
-    # Отправляем соответствующую игру
-    if game_type == "dice":
-        await callback.message.answer_dice(emoji="🎲")
-    elif game_type == "dart":
-        await callback.message.answer_dice(emoji="🎯")
-    elif game_type == "basketball":
-        await callback.message.answer_dice(emoji="🏀")
-    elif game_type == "football":
-        await callback.message.answer_dice(emoji="⚽")
-    elif game_type == "slot":
-        await callback.message.answer_dice(emoji="🎰")
-    elif game_type == "bowling":
-        await callback.message.answer_dice(emoji="🎳")
-    
-    await callback.answer()
-
-@dp.message(F.text == "🔗 Получить приватки")
+@dp.message(F.text == "🔗 Приватки")
 async def send_private_links(message: types.Message):
-    """Отправляет приватные ссылки"""
+    """Отправляет приватки"""
     user_data = await db.get_user(message.from_user.id)
-    if not user_data or not (user_data[3] and user_data[4] and user_data[5]):
-        await message.answer("⚠️ *Сначала пройдите все этапы регистрации!*", parse_mode="Markdown")
+    if not user_data or not (user_data.get('subscribed') and user_data.get('rules_accepted')):
+        await message.answer("⚠️ *Сначала пройдите регистрацию!*", parse_mode="Markdown")
         return
     
     private_channels = await db.get_private_channels()
     
     if not private_channels:
-        await message.answer("❌ *Приватные каналы временно недоступны.*", parse_mode="Markdown")
+        await message.answer("🔗 *Приватные каналы еще не добавлены*", parse_mode="Markdown")
         return
     
-    # Отправляем частями, чтобы избежать ограничения длины
-    chunk_size = 10
-    chunks = [private_channels[i:i + chunk_size] for i in range(0, len(private_channels), chunk_size)]
+    await message.answer(f"🔗 *Всего приватных каналов: {len(private_channels)}*", parse_mode="Markdown")
     
-    for chunk_num, chunk in enumerate(chunks, 1):
-        links_text = f"🔗 *Приватные каналы (часть {chunk_num}/{len(chunks)}):*\n\n"
+    # Отправляем частями
+    for i in range(0, len(private_channels), 10):
+        chunk = private_channels[i:i+10]
+        text = ""
+        for channel in chunk:
+            name = channel['name'] or f"Приват #{channel['id']}"
+            link = channel['link']
+            text += f"{name}\n{link}\n\n"
         
-        for i, channel in enumerate(chunk, 1):
-            name = channel[1] or f"Приват #{channel[0]}"
-            link = channel[2]
-            links_text += f"{i}. {name}\n{link}\n\n"
-        
-        if chunk_num == len(chunks):
-            links_text += f"💎 *Спасибо, что с нами! {OWNER_USERNAME}* 💎"
-        
-        try:
-            await message.answer(links_text, parse_mode="Markdown", disable_web_page_preview=True)
-        except Exception as e:
-            logger.error(f"Ошибка отправки приватных ссылок: {e}")
-            # Если сообщение слишком длинное, делим на еще более мелкие части
-            for j, channel in enumerate(chunk):
-                name = channel[1] or f"Приват #{channel[0]}"
-                link = channel[2]
-                single_text = f"🔗 {name}\n{link}"
-                await message.answer(single_text, disable_web_page_preview=True)
-        
-        await asyncio.sleep(0.5)  # Задержка между сообщениями
+        await message.answer(text, disable_web_page_preview=True)
+        await asyncio.sleep(0.5)
+
+@dp.message(F.text == "🤖 Нейросеть")
+async def show_ai_menu(message: types.Message):
+    """Показывает AI меню"""
+    user_data = await db.get_user(message.from_user.id)
+    if not user_data or not (user_data.get('subscribed') and user_data.get('rules_accepted')):
+        await message.answer("⚠️ *Сначала пройдите регистрацию!*", parse_mode="Markdown")
+        return
+    
+    await message.answer("🤖 *AI помощник с поиском в интернете*", reply_markup=create_ai_keyboard())
+
+@dp.message(F.text == "📊 Статистика")
+async def show_stats(message: types.Message):
+    """Показывает статистику"""
+    user_data = await db.get_user(message.from_user.id)
+    if not user_data or not (user_data.get('subscribed') and user_data.get('rules_accepted')):
+        await message.answer("⚠️ *Сначала пройдите регистрацию!*", parse_mode="Markdown")
+        return
+    
+    total_users = await db.get_all_users()
+    ai_requests = user_data.get('ai_requests', 0)
+    
+    text = f"""
+📊 *Ваша статистика:*
+
+👤 ID: `{user_data['user_id']}`
+📛 Имя: {user_data['full_name']}
+📅 Регистрация: {user_data['registration_date'][:10] if user_data['registration_date'] else 'Нет'}
+
+🤖 Запросов к AI: {ai_requests}
+👥 Всего пользователей: {total_users}
+    """
+    
+    await message.answer(text, parse_mode="Markdown")
 
 @dp.message(F.text == "📜 Правила")
-async def show_rules_again(message: types.Message):
+async def show_rules_menu(message: types.Message):
     """Показывает правила"""
-    rules_text = f"""
-📜 *Правила использования бота:*
-
-1. 🤝 *Уважение*  
-   Уважайте других пользователей и администрацию.
-
-2. 📢 *Спам запрещен*  
-   Запрещена рассылка рекламы и флуд.
-
-3. 🔗 *Запрещенные материалы*  
-   Не делитесь запрещенным контентом.
-
-4. 🛡 *Безопасность*  
-   Не пытайтесь взломать бота или нарушить его работу.
-
-5. 📞 *Поддержка*  
-   При возникновении проблем обращайтесь к {OWNER_USERNAME}
-
-📌 *Важно:* Нарушение правил ведет к бану!
-    """
-    await message.answer(rules_text, parse_mode="Markdown")
+    await message.answer(f"📜 *Правила бота:*\n\n1. Уважайте других\n2. Не спамьте\n3. Подпишитесь на каналы\n4. Помощь: {OWNER_USERNAME}", parse_mode="Markdown")
 
 @dp.message(F.text == "❓ Помощь")
-async def show_help(message: types.Message):
+async def show_help_menu(message: types.Message):
     """Показывает помощь"""
-    help_text = f"""
-❓ *Помощь и поддержка*
+    text = f"""
+❓ *Помощь:*
 
-Если у вас возникли проблемы или вопросы:
+🤖 *Команды:*
+• /start - запуск бота
+• /admin - админ-панель
 
-🤖 *По вопросам работы бота:*
-Свяжитесь с создателем: {OWNER_USERNAME}
-
-🛠 *Технические проблемы:*
-• Проверьте, прошли ли вы все этапы регистрации
-• Убедитесь, что подписались на все каналы
-• Попробуйте перезапустить бота командой /start
+🔗 *Обязательные каналы:*
+1. Manuals and softs🔫
+2. Чат зайса)
 
 📞 *Контакты:*
-Создатель: {OWNER_USERNAME}
-
-*Небо пухом Лучший* ✨
+{OWNER_USERNAME}
+ID: `{OWNER_ID}`
     """
-    await message.answer(help_text, parse_mode="Markdown")
+    await message.answer(text, parse_mode="Markdown")
 
-@dp.message(Command("admin"))
-async def show_admin_panel(message: types.Message):
-    """Показывает админ-панель"""
-    user_id = message.from_user.id
+# Обработчики игр
+@dp.callback_query(F.data.startswith("game_"))
+async def process_game(callback: CallbackQuery):
+    """Обрабатывает игры"""
+    game = callback.data.split("_")[1]
     
-    if not await db.is_admin(user_id):
-        await message.answer("⛔ *У вас нет доступа к админ-панели!*", parse_mode="Markdown")
+    if game == "back":
+        await callback.message.delete()
+    elif game == "dice":
+        await callback.message.answer_dice(emoji="🎲")
+    elif game == "dart":
+        await callback.message.answer_dice(emoji="🎯")
+    elif game == "basketball":
+        await callback.message.answer_dice(emoji="🏀")
+    elif game == "football":
+        await callback.message.answer_dice(emoji="⚽")
+    elif game == "slot":
+        await callback.message.answer_dice(emoji="🎰")
+    
+    await callback.answer()
+
+# Обработчики AI
+@dp.callback_query(F.data.startswith("ai_"))
+async def process_ai(callback: CallbackQuery, state: FSMContext):
+    """Обрабатывает AI"""
+    action = callback.data.split("_")[1]
+    
+    if action == "back":
+        await callback.message.delete()
+    elif action == "question":
+        await callback.message.answer("🤖 *Задайте вопрос для поиска в интернете:*", parse_mode="Markdown")
+        await state.set_state(UserState.ai_waiting_question)
+    elif action == "stats":
+        user_data = await db.get_user(callback.from_user.id)
+        if user_data:
+            ai_requests = user_data.get('ai_requests', 0)
+            await callback.message.edit_text(f"📊 *Ваши запросы к AI:* {ai_requests}", parse_mode="Markdown")
+    
+    await callback.answer()
+
+@dp.message(UserState.ai_waiting_question)
+async def process_ai_question(message: types.Message, state: FSMContext):
+    """Обрабатывает вопрос AI"""
+    if len(message.text) < 3:
+        await message.answer("❌ *Вопрос слишком короткий*", parse_mode="Markdown")
         return
     
-    admin_text = f"""
-👑 *Админ-панель* {OWNER_USERNAME}
-
-*Доступные действия:*
-
-• 📊 *Статистика* - просмотр статистики бота
-• ➕ *Добавить канал* - добавить канал для подписки
-• 🗑 *Удалить канал* - удалить канал из списка
-• ➕ *Добавить приват* - добавить приватный канал
-• 🗑 *Удалить приват* - удалить приватный канал
-• 👥 *Управление админами* - добавить/удалить админов
-• 📢 *Рассылка* - отправить сообщение всем пользователям
-
-Выберите действие:
-    """
+    # Показываем поиск
+    search_msg = await message.answer("🔍 *Ищу информацию...*", parse_mode="Markdown")
     
-    await message.answer(admin_text, parse_mode="Markdown", reply_markup=create_admin_keyboard())
+    # Ищем ответ
+    response = await ai_search_internet(message.text)
+    
+    # Увеличиваем счетчик
+    await db.increment_ai_requests(message.from_user.id)
+    await db.update_stat("ai_requests")
+    
+    # Удаляем сообщение поиска и отправляем ответ
+    await search_msg.delete()
+    await message.answer(response, parse_mode="Markdown")
+    
+    await state.clear()
 
-# Обработчики админ-панели
+# АДМИН-ПАНЕЛЬ
+@dp.message(Command("admin"))
+async def cmd_admin(message: types.Message):
+    """Админ-панель"""
+    if not await db.is_admin(message.from_user.id):
+        await message.answer("⛔ *Нет доступа!*", parse_mode="Markdown")
+        return
+    
+    await message.answer("👑 *Админ-панель:*", reply_markup=create_admin_keyboard())
+
 @dp.callback_query(F.data.startswith("admin_"))
-async def process_admin_action(callback: CallbackQuery, state: FSMContext):
-    """Обрабатывает действия админ-панели"""
-    user_id = callback.from_user.id
-    
-    if not await db.is_admin(user_id):
+async def process_admin(callback: CallbackQuery, state: FSMContext):
+    """Обрабатывает админ-действия"""
+    if not await db.is_admin(callback.from_user.id):
         await callback.answer("⛔ Нет доступа!", show_alert=True)
         return
     
     action = callback.data.split("_")[1]
     
-    if action == "stats":
-        await show_admin_stats(callback)
-    elif action == "add_channel":
-        await callback.message.answer("📝 *Введите username канала (например: @channel_name):*", parse_mode="Markdown")
-        await state.set_state(AdminState.waiting_channel_username)
-    elif action == "remove_channel":
-        await show_channels_for_removal(callback)
-    elif action == "add_private":
-        await callback.message.answer("📝 *Введите название приватного канала:*", parse_mode="Markdown")
-        await state.set_state(AdminState.waiting_private_name)
-    elif action == "remove_private":
-        await show_privates_for_removal(callback)
-    elif action == "add_admin":
-        await callback.message.answer("📝 *Введите ID пользователя или перешлите его сообщение:*")
-        await state.set_state(AdminState.waiting_channel_username)
-    elif action == "remove_admin":
-        await show_admins_for_removal(callback)
-    elif action == "broadcast":
-        await callback.message.answer("📢 *Введите сообщение для рассылки:*\n\nМожно использовать HTML-разметку.", parse_mode="Markdown")
-        await state.set_state(AdminState.waiting_broadcast)
-    elif action == "back":
+    if action == "back":
         await callback.message.delete()
+    
+    elif action == "stats":
+        await show_admin_stats(callback)
+    
+    elif action == "users":
+        await show_admin_users(callback)
+    
+    elif action == "add_channel":
+        await callback.message.answer("📝 Введите @username канала:")
+        await state.set_state(AdminState.waiting_channel_username)
+    
+    elif action == "remove_channel":
+        await show_channels_list(callback)
+    
+    elif action == "add_private":
+        await callback.message.answer("📝 Введите название приватного канала:")
+        await state.set_state(AdminState.waiting_private_name)
+    
+    elif action == "remove_private":
+        await show_privates_list(callback)
+    
+    elif action == "manage":
+        await show_admins_list(callback)
+    
+    elif action == "broadcast":
+        await callback.message.answer("📢 Введите сообщение для рассылки:")
+        await state.set_state(AdminState.waiting_broadcast)
+    
+    elif action == "ban":
+        await callback.message.answer("⛔ Введите ID пользователя для бана:")
+        await state.set_state(AdminState.waiting_user_id)
+        await state.update_data(action="ban")
+    
+    elif action == "unban":
+        await callback.message.answer("✅ Введите ID пользователя для разбана:")
+        await state.set_state(AdminState.waiting_user_id)
+        await state.update_data(action="unban")
     
     await callback.answer()
 
 async def show_admin_stats(callback: CallbackQuery):
-    """Показывает статистику бота"""
+    """Показывает статистику админа"""
     total_users = await db.get_all_users()
-    captcha_passed = await db.get_stat("captcha_passed")
+    active_users = await db.get_active_users_count()
     subscribed = await db.get_stat("subscribed")
-    rules_accepted = await db.get_stat("rules_accepted")
+    rules = await db.get_stat("rules_accepted")
     starts = await db.get_stat("starts")
+    ai_requests = await db.get_stat("ai_requests")
     
-    channels = await db.get_channels()
+    admin_channels = await db.get_admin_channels()
     private_channels = await db.get_private_channels()
     
-    from datetime import datetime
-    stats_text = f"""
-📊 *Статистика бота*
+    text = f"""
+📊 *Статистика бота:*
 
-👥 *Пользователи:*
-• Всего пользователей: `{total_users}`
-• Прошли капчу: `{captcha_passed}`
-• Подписались: `{subscribed}`
-• Приняли правила: `{rules_accepted}`
-• Запусков бота: `{starts}`
+👥 Пользователи: {total_users}
+📈 Активные: {active_users}
+📢 Подписки: {subscribed}
+📜 Правила: {rules}
+🚀 Стартов: {starts}
+🤖 AI запросов: {ai_requests}
 
-📢 *Каналы:*
-• Для подписки: `{len(channels)}`
-• Приватных: `{len(private_channels)}`
-
-⏰ *Обновлено:* {datetime.now().strftime('%H:%M:%S')}
+📢 Каналов: {len(admin_channels)}
+🔗 Приваток: {len(private_channels)}
     """
     
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_stats")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
-        ]
-    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_stats")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+    ])
     
-    await callback.message.edit_text(stats_text, parse_mode="Markdown", reply_markup=keyboard)
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
-async def show_channels_for_removal(callback: CallbackQuery):
-    """Показывает список каналов для удаления"""
-    channels = await db.get_channels()
+async def show_admin_users(callback: CallbackQuery):
+    """Показывает пользователи"""
+    users = await db.get_all_users_data()
+    
+    text = "👥 *Последние пользователи:*\n\n"
+    for user in users[:10]:
+        text += f"ID: `{user[0]}`\nИмя: {user[2]}\n\n"
+    
+    if len(users) > 10:
+        text += f"... и еще {len(users) - 10} пользователей"
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+    ])
+    
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+
+async def show_channels_list(callback: CallbackQuery):
+    """Показывает каналы для удаления"""
+    channels = await db.get_admin_channels()
     
     if not channels:
-        await callback.answer("❌ Нет каналов для удаления!", show_alert=True)
+        await callback.message.edit_text("❌ *Нет добавленных каналов!*", parse_mode="Markdown")
         return
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
     
     for channel in channels:
-        channel_id = channel[0]
-        channel_title = channel[2] or channel[1]
+        button_text = f"🗑 {channel['channel_title'] or channel['channel_username']}"
+        if len(button_text) > 40:
+            button_text = button_text[:37] + "..."
+        
         keyboard.inline_keyboard.append([
             InlineKeyboardButton(
-                text=f"🗑 {channel_title[:30]}",
-                callback_data=f"remove_channel_{channel_id}"
+                text=button_text,
+                callback_data=f"delete_channel_{channel['id']}"
             )
         ])
     
-    keyboard.inline_keyboard.append([
-        InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")
-    ])
+    keyboard.inline_keyboard.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")])
     
-    await callback.message.edit_text("🗑 *Выберите канал для удаления:*", 
-                                    parse_mode="Markdown", 
-                                    reply_markup=keyboard)
+    await callback.message.edit_text("🗑 *Выберите канал для удаления:*", reply_markup=keyboard)
 
-async def show_privates_for_removal(callback: CallbackQuery):
-    """Показывает список приватных каналов для удаления"""
-    private_channels = await db.get_private_channels()
+async def show_privates_list(callback: CallbackQuery):
+    """Показывает приватки для удаления"""
+    privates = await db.get_private_channels(limit=20)
     
-    if not private_channels:
-        await callback.answer("❌ Нет приватных каналов для удаления!", show_alert=True)
+    if not privates:
+        await callback.message.edit_text("❌ *Нет приватных каналов!*", parse_mode="Markdown")
         return
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
     
-    for channel in private_channels[:20]:  # Ограничиваем 20 каналами
-        channel_id = channel[0]
-        channel_name = channel[1] or f"Приват #{channel_id}"
+    for private_ch in privates:
+        button_text = f"🗑 {private_ch['name'] or f'Приват #{private_ch['id']}'}"
+        if len(button_text) > 40:
+            button_text = button_text[:37] + "..."
+        
         keyboard.inline_keyboard.append([
             InlineKeyboardButton(
-                text=f"🗑 {channel_name[:30]}",
-                callback_data=f"remove_private_{channel_id}"
+                text=button_text,
+                callback_data=f"delete_private_{private_ch['id']}"
             )
         ])
     
-    keyboard.inline_keyboard.append([
-        InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")
-    ])
+    keyboard.inline_keyboard.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")])
     
-    await callback.message.edit_text("🗑 *Выберите приватный канал для удаления:*", 
-                                    parse_mode="Markdown", 
-                                    reply_markup=keyboard)
+    await callback.message.edit_text("🗑 *Выберите приватный канал для удаления:*", reply_markup=keyboard)
 
-async def show_admins_for_removal(callback: CallbackQuery):
-    """Показывает список админов для удаления"""
+async def show_admins_list(callback: CallbackQuery):
+    """Показывает админов"""
     admins = await db.get_admins()
     
-    # Фильтруем владельца
-    admins = [admin for admin in admins if admin[0] != OWNER_ID]
-    
-    if not admins:
-        await callback.answer("❌ Нет админов для удаления!", show_alert=True)
-        return
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
-    
+    text = "👑 *Администраторы:*\n\n"
     for admin in admins:
-        admin_id = admin[0]
-        admin_username = admin[1] or f"ID: {admin_id}"
-        keyboard.inline_keyboard.append([
-            InlineKeyboardButton(
-                text=f"👥 Удалить {admin_username}",
-                callback_data=f"remove_admin_{admin_id}"
-            )
-        ])
+        if admin['user_id'] != OWNER_ID:
+            text += f"ID: `{admin['user_id']}`\n@{admin['username']}\n\n"
     
-    keyboard.inline_keyboard.append([
-        InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")
+    text += f"\n👑 *Владелец:*\nID: `{OWNER_ID}`\n{OWNER_USERNAME}"
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить", callback_data="admin_add_admin")],
+        [InlineKeyboardButton(text="🗑 Удалить", callback_data="admin_remove_admin")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
     ])
     
-    await callback.message.edit_text("👥 *Выберите админа для удаления:*", 
-                                    parse_mode="Markdown", 
-                                    reply_markup=keyboard)
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
-@dp.callback_query(F.data.startswith("remove_"))
-async def process_removal(callback: CallbackQuery):
-    """Обрабатывает удаление каналов/админов"""
-    user_id = callback.from_user.id
-    
-    if not await db.is_admin(user_id):
+# Удаление каналов/приваток
+@dp.callback_query(F.data.startswith("delete_"))
+async def delete_item(callback: CallbackQuery):
+    """Удаляет канал или приват"""
+    if not await db.is_admin(callback.from_user.id):
         await callback.answer("⛔ Нет доступа!", show_alert=True)
         return
     
     data = callback.data.split("_")
-    action_type = data[1]
-    item_id = int(data[2])
+    type_ = data[1]
+    id_ = int(data[2])
     
-    if action_type == "channel":
-        await db.delete_channel(item_id)
-        await callback.answer("✅ Канал удален!", show_alert=True)
-        await show_channels_for_removal(callback)
-    elif action_type == "private":
-        await db.delete_private_channel(item_id)
-        await callback.answer("✅ Приватный канал удален!", show_alert=True)
-        await show_privates_for_removal(callback)
-    elif action_type == "admin":
-        if item_id == OWNER_ID:
-            await callback.answer("❌ Нельзя удалить владельца!", show_alert=True)
-        else:
-            await db.remove_admin(item_id)
-            await callback.answer("✅ Админ удален!", show_alert=True)
-            await show_admins_for_removal(callback)
-
-# Обработчики состояний админа
-@dp.message(AdminState.waiting_channel_username)
-async def process_channel_username(message: types.Message, state: FSMContext):
-    """Обрабатывает username канала или добавление админа"""
-    text = message.text.strip()
-    
-    # Проверяем, не является ли это пересланным сообщением
-    if message.forward_from:
-        # Это пересланное сообщение для добавления админа
-        new_admin_id = message.forward_from.id
-        new_admin_username = message.forward_from.username or f"ID: {new_admin_id}"
-        
-        await db.add_admin(new_admin_id, new_admin_username, message.from_user.id)
-        await message.answer(f"✅ Админ {new_admin_username} добавлен!")
-        await state.clear()
-        return
-    
-    # Проверяем, является ли текст ID пользователя
     try:
-        user_id = int(text)
-        # Это ID пользователя для добавления админа
-        try:
-            user = await bot.get_chat(user_id)
-            username = user.username or f"ID: {user_id}"
-            await db.add_admin(user_id, username, message.from_user.id)
-            await message.answer(f"✅ Админ {username} добавлен!")
-        except Exception as e:
-            await message.answer(f"❌ Ошибка: {e}")
-        await state.clear()
-        return
-    except ValueError:
-        pass
+        if type_ == "channel":
+            await db.delete_admin_channel(id_)
+            await callback.answer("✅ Канал удален!", show_alert=True)
+            await show_channels_list(callback)
+        elif type_ == "private":
+            await db.delete_private_channel(id_)
+            await callback.answer("✅ Приватный канал удален!", show_alert=True)
+            await show_privates_list(callback)
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
+
+# Обработка состояний админа
+@dp.message(AdminState.waiting_channel_username)
+async def process_admin_channel_username(message: types.Message, state: FSMContext):
+    """Обрабатывает username канала"""
+    username = message.text.strip()
+    if not username.startswith('@'):
+        username = '@' + username
     
-    # Это username канала
-    if not text.startswith('@'):
-        text = '@' + text
-    
-    await state.update_data(channel_username=text)
-    await message.answer("📝 *Теперь введите ссылку-приглашение на канал:*", parse_mode="Markdown")
+    await state.update_data(channel_username=username)
+    await message.answer("📝 Теперь введите название канала:")
+    await state.set_state(AdminState.waiting_channel_title)
+
+@dp.message(AdminState.waiting_channel_title)
+async def process_admin_channel_title(message: types.Message, state: FSMContext):
+    """Обрабатывает название канала"""
+    title = message.text.strip()
+    await state.update_data(channel_title=title)
+    await message.answer("📝 Теперь введите ссылку на канал:")
     await state.set_state(AdminState.waiting_channel_link)
 
 @dp.message(AdminState.waiting_channel_link)
-async def process_channel_link(message: types.Message, state: FSMContext):
-    """Обрабатывает ссылку на канал"""
+async def process_admin_channel_link(message: types.Message, state: FSMContext):
+    """Обрабатывает ссылку канала"""
     data = await state.get_data()
-    channel_username = data.get('channel_username')
+    username = data.get('channel_username')
+    title = data.get('channel_title')
+    link = message.text.strip()
     
-    if channel_username:
-        # Это добавление канала
-        channel_link = message.text.strip()
-        channel_title = channel_username
-        
-        try:
-            # Пытаемся получить информацию о канале
-            chat = await bot.get_chat(channel_username)
-            channel_title = chat.title or channel_username
-        except Exception as e:
-            logger.error(f"Ошибка получения информации о канале: {e}")
-        
-        await db.add_channel(channel_username, channel_title, channel_link, message.from_user.id)
-        await message.answer(f"✅ Канал *{channel_title}* добавлен!", parse_mode="Markdown")
+    if not link.startswith('https://t.me/'):
+        await message.answer("❌ Ссылка должна начинаться с https://t.me/")
+        return
     
-    await state.clear()
+    try:
+        await db.add_admin_channel(username, title, link, message.from_user.id)
+        await message.answer(f"✅ Канал {title} (@{username}) добавлен!")
+        await state.clear()
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
 
 @dp.message(AdminState.waiting_private_name)
-async def process_private_name(message: types.Message, state: FSMContext):
+async def process_admin_private_name(message: types.Message, state: FSMContext):
     """Обрабатывает название приватного канала"""
-    channel_name = message.text.strip()
-    await state.update_data(private_name=channel_name)
-    await message.answer("📝 *Теперь введите ссылку на приватный канал:*", parse_mode="Markdown")
+    name = message.text.strip()
+    await state.update_data(private_name=name)
+    await message.answer("📝 Теперь введите ссылку на приватный канал:")
     await state.set_state(AdminState.waiting_private_link)
 
 @dp.message(AdminState.waiting_private_link)
-async def process_private_link(message: types.Message, state: FSMContext):
-    """Обрабатывает ссылку на приватный канал"""
+async def process_admin_private_link(message: types.Message, state: FSMContext):
+    """Обрабатывает ссылку приватного канала"""
     data = await state.get_data()
-    channel_name = data.get('private_name')
-    channel_link = message.text.strip()
+    name = data.get('private_name')
+    link = message.text.strip()
     
-    await db.add_private_channel(channel_name, channel_link, message.from_user.id)
-    await message.answer(f"✅ Приватный канал *{channel_name}* добавлен!", parse_mode="Markdown")
+    if not link.startswith('https://t.me/'):
+        await message.answer("❌ Ссылка должна начинаться с https://t.me/")
+        return
+    
+    try:
+        await db.add_private_channel(name, link, message.from_user.id)
+        await message.answer(f"✅ Приватный канал {name} добавлен!")
+        await state.clear()
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+@dp.message(AdminState.waiting_user_id)
+async def process_admin_user_id(message: types.Message, state: FSMContext):
+    """Обрабатывает ID пользователя для бана/разбана"""
+    data = await state.get_data()
+    action = data.get('action')
+    
+    try:
+        user_id = int(message.text.strip())
+        
+        # Проверяем, существует ли пользователь
+        user = await db.get_user(user_id)
+        if not user:
+            await message.answer(f"❌ Пользователь с ID {user_id} не найден!")
+            await state.clear()
+            return
+        
+        if action == "ban":
+            await db.ban_user(user_id)
+            await message.answer(f"⛔ Пользователь {user_id} забанен!")
+        elif action == "unban":
+            await db.unban_user(user_id)
+            await message.answer(f"✅ Пользователь {user_id} разбанен!")
+    
+    except ValueError:
+        await message.answer("❌ Ошибка: Введите числовой ID")
+    
     await state.clear()
 
 @dp.message(AdminState.waiting_broadcast)
-async def process_broadcast(message: types.Message, state: FSMContext):
+async def process_admin_broadcast(message: types.Message, state: FSMContext):
     """Обрабатывает рассылку"""
-    broadcast_message = message.text
+    text = message.text
     user_ids = await db.get_user_ids()
     
     if not user_ids:
@@ -1020,54 +1157,106 @@ async def process_broadcast(message: types.Message, state: FSMContext):
         await state.clear()
         return
     
-    total_users = len(user_ids)
-    await message.answer(f"📢 *Начинаю рассылку для {total_users} пользователей...*", parse_mode="Markdown")
+    await message.answer(f"📢 Рассылаю {len(user_ids)} пользователям...")
     
     sent = 0
     failed = 0
     
     for user_id in user_ids:
         try:
-            await bot.send_message(user_id, broadcast_message, parse_mode="HTML")
+            await bot.send_message(user_id, text)
             sent += 1
-            await asyncio.sleep(0.05)  # Небольшая задержка, чтобы не получить ограничение
+            await asyncio.sleep(0.1)
         except Exception as e:
-            failed += 1
             logger.error(f"Ошибка отправки пользователю {user_id}: {e}")
+            failed += 1
     
-    await message.answer(f"✅ *Рассылка завершена!*\n\nУспешно: {sent}\nНе удалось: {failed}", parse_mode="Markdown")
+    await message.answer(f"✅ Рассылка завершена!\n\n✅ Отправлено: {sent}\n❌ Ошибок: {failed}")
     await state.clear()
 
-# Обработчик всех сообщений для обновления активности
-@dp.message()
-async def handle_all_messages(message: types.Message):
-    """Обрабатывает все сообщения"""
-    # Обновляем статистику
-    await db.update_stat("messages")
-    
-    # Показываем меню, если пользователь прошел регистрацию
-    user_data = await db.get_user(message.from_user.id)
-    if user_data and user_data[3] and user_data[4] and user_data[5]:
-        # Пользователь прошел регистрацию
-        pass
-    elif message.text not in ["/start", "/admin", "/stats"]:
-        # Если пользователь не прошел регистрацию и пишет не команды
-        await message.answer("⚠️ *Пожалуйста, сначала пройдите регистрацию через /start*", parse_mode="Markdown")
+# Добавление/удаление админов
+@dp.callback_query(F.data == "admin_add_admin")
+async def add_admin_callback(callback: CallbackQuery, state: FSMContext):
+    """Добавление админа"""
+    await callback.message.answer("👑 Введите ID пользователя для добавления в админы:")
+    await state.set_state(AdminState.waiting_admin_id)
+    await state.update_data(action="add_admin")
+    await callback.answer()
 
-# Основная функция запуска бота
-async def main():
-    """Основная функция запуска бота"""
-    logger.info("Запуск бота...")
+@dp.callback_query(F.data == "admin_remove_admin")
+async def remove_admin_callback(callback: CallbackQuery):
+    """Удаление админа"""
+    admins = await db.get_admins()
     
-    # Инициализируем базу данных
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+    
+    for admin in admins:
+        if admin['user_id'] != OWNER_ID:
+            button_text = f"🗑 {admin['username'] or f'ID {admin['user_id']}'}"
+            if len(button_text) > 40:
+                button_text = button_text[:37] + "..."
+            
+            keyboard.inline_keyboard.append([
+                InlineKeyboardButton(
+                    text=button_text,
+                    callback_data=f"remove_admin_{admin['user_id']}"
+                )
+            ])
+    
+    keyboard.inline_keyboard.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")])
+    
+    await callback.message.edit_text("🗑 *Выберите админа для удаления:*", reply_markup=keyboard)
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("remove_admin_"))
+async def remove_admin_process(callback: CallbackQuery):
+    """Удаляет админа"""
+    admin_id = int(callback.data.split("_")[2])
+    
+    if admin_id == OWNER_ID:
+        await callback.answer("❌ Нельзя удалить владельца!", show_alert=True)
+        return
+    
+    try:
+        await db.remove_admin(admin_id)
+        await callback.answer("✅ Админ удален!", show_alert=True)
+        await show_admins_list(callback)
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
+
+@dp.message(AdminState.waiting_admin_id)
+async def process_admin_admin_id(message: types.Message, state: FSMContext):
+    """Обрабатывает ID админа"""
+    data = await state.get_data()
+    action = data.get('action')
+    
+    try:
+        user_id = int(message.text.strip())
+        
+        if action == "add_admin":
+            try:
+                user = await bot.get_chat(user_id)
+                username = user.username or f"ID {user_id}"
+                await db.add_admin(user_id, username, message.from_user.id)
+                await message.answer(f"✅ Админ {username} добавлен!")
+            except Exception as e:
+                await message.answer(f"❌ Ошибка: {e}")
+    
+    except ValueError:
+        await message.answer("❌ Ошибка: Введите числовой ID")
+    
+    await state.clear()
+
+# Основная функция
+async def main():
+    """Запуск бота"""
+    logger.info("🚀 Запускаю бота...")
+    
+    # Инициализируем базу
     await db.init_db()
     
     # Запускаем бота
     await dp.start_polling(bot)
 
-# Запуск бота
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Бот остановлен")
+    asyncio.run(main())
